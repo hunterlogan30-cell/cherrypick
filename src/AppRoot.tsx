@@ -1,21 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { HomePage } from './showcase/HomePage';
 import { ShowcasePage } from './showcase/ShowcasePage';
-import { PlaygroundApp } from './PlaygroundApp';
 
 export const AppRoot: React.FC = () => {
-  const getInitialView = (): 'home' | 'cherrypick' | 'playground' => {
+  const getInitialView = (): 'cherrypick' | 'home' => {
     const hash = window.location.hash;
-    if (hash === '#/cherrypick') return 'cherrypick';
-    if (hash === '#/playground') return 'playground';
-    return 'home';
+    if (hash === '#/home' || hash === '#/index') return 'home';
+    return 'cherrypick';
   };
 
-  const [currentView, setCurrentView] = useState<'home' | 'cherrypick' | 'playground'>(getInitialView);
+  const [currentView, setCurrentView] = useState<'cherrypick' | 'home'>(getInitialView);
 
-  const navigateTo = (view: 'home' | 'cherrypick' | 'playground') => {
+  const navigateTo = (view: 'cherrypick' | 'home') => {
     setCurrentView(view);
-    if (view === 'home') {
+    if (view === 'cherrypick') {
       window.location.hash = '';
     } else {
       window.location.hash = `#/${view}`;
@@ -26,9 +24,8 @@ export const AppRoot: React.FC = () => {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash;
-      if (hash === '#/cherrypick') setCurrentView('cherrypick');
-      else if (hash === '#/playground') setCurrentView('playground');
-      else if (!hash || hash === '#/' || hash === '#') setCurrentView('home');
+      if (hash === '#/home' || hash === '#/index') setCurrentView('home');
+      else setCurrentView('cherrypick');
     };
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
@@ -36,21 +33,16 @@ export const AppRoot: React.FC = () => {
 
   return (
     <div>
-      {currentView === 'home' && (
+      {currentView === 'home' ? (
         <HomePage
           onOpenProject={() => navigateTo('cherrypick')}
-          onOpenPlayground={() => navigateTo('playground')}
+          onOpenPlayground={() => {}}
         />
-      )}
-
-      {currentView === 'cherrypick' && (
+      ) : (
         <ShowcasePage
           onBackToIndex={() => navigateTo('home')}
-          onOpenPlayground={() => navigateTo('playground')}
         />
       )}
-
-      {currentView === 'playground' && <PlaygroundApp />}
     </div>
   );
 };

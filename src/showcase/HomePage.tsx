@@ -36,7 +36,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onOpenPlaygro
 
         {/* Projects / Writing Section */}
         <section style={styles.section}>
-          <h3 style={styles.sectionHeading}>Playground & Projects</h3>
+          <h3 style={styles.sectionHeading}>Projects</h3>
 
           <div style={styles.postListContainer}>
             {/* Year Group: 2026 */}
