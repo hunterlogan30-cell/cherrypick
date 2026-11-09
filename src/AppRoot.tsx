@@ -36,7 +36,7 @@ export const AppRoot: React.FC = () => {
       {currentView === 'home' ? (
         <HomePage
           onOpenProject={() => navigateTo('cherrypick')}
-          onOpenPlayground={() => {}}
+          onOpenPlayground={() => { }}
         />
       ) : (
         <ShowcasePage

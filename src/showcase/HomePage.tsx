@@ -27,7 +27,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onOpenPlaygro
           </p>
           <p style={styles.paragraph}>
             You can explore the live experiment below. Reach me via{' '}
-            <a href="mailto:loganoneill@gmail.com" style={styles.basicLink}>
+            <a href="mailto:hunterlogan30@gmail.com" style={styles.basicLink}>
               email
             </a>
             . I would love to connect and build!
