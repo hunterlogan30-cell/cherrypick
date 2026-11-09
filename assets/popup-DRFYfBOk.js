@@ -1,1 +1,0 @@
-import{p as s,q as o,j as t,R as a,m as i,l as n,k as p}from"./cherrypickStyles-BZ9aC5XC.js";s(document);o.createRoot(document.getElementById("popup-root")).render(t.jsx(a.StrictMode,{children:t.jsx(i,{isNativePopupWindow:!0})}));n().then(e=>{p({settings:{...e.settings,overlayVisible:!0}})});
