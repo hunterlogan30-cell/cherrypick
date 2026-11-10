@@ -38,6 +38,15 @@ export interface ScorePoint {
 
 export type GamePhase = 'SCHEDULED' | 'LIVE' | 'CLUTCH' | 'OVERTIME' | 'FINAL';
 
+export type StoppageReason =
+  | 'Free Throws'
+  | 'Throw-in'
+  | 'Timeout'
+  | 'Review'
+  | 'Jump Ball'
+  | 'End of Period'
+  | null;
+
 export interface NbaGame {
   id: string;
   awayTeam: string; // e.g. 'PHI'
@@ -49,6 +58,8 @@ export interface NbaGame {
   clock: string; // e.g. '4:12' or '1:48'
   isTimeout?: boolean; // When game clock is paused on a team or official timeout
   isClockRunning?: boolean; // True when game action is actively live; false on whistles, fouls, free throws, stoppages
+  stoppageReason?: StoppageReason; // Reason game clock is stopped: 'Free Throws', 'Throw-in', 'Timeout', 'Review', 'Jump Ball'
+  stoppageDetail?: string; // Specific stoppage label to display in the top-right timing slot (e.g. "Free Throw (1 of 2)" or "Throw-in")
   startTimeText?: string; // e.g. '5:00 PM EST'
   dayLabel?: 'TODAY' | 'TOMORROW';
   possession?: 'away' | 'home' | null;

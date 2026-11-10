@@ -164,7 +164,9 @@ export const PopupDashboard: React.FC<PopupDashboardProps> = ({
                     g.isTimeout ||
                       /timeout/i.test(g.clock || '') ||
                       (g.lastPlayShort && /timeout/i.test(g.lastPlayShort))
-                  )
+                  ),
+                  g.stoppageReason,
+                  g.stoppageDetail
                 )}
               </span>
             </div>

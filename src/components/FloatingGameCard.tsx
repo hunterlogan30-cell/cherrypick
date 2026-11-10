@@ -1,7 +1,11 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { NbaGame } from '../types/nba';
 import { getTeamInfo } from '../data/teams';
-import { formatLiveClockDisplay } from '../services/espnNbaService';
+import {
+  formatLiveClockDisplay,
+  clockToSeconds,
+  secondsToClock,
+} from '../services/espnNbaService';
 import { ScoreChart } from './ScoreChart';
 
 interface FloatingGameCardProps {
@@ -19,6 +23,49 @@ export const FloatingGameCard: React.FC<FloatingGameCardProps> = ({
 }) => {
   const awayInfo = getTeamInfo(game.awayTeam);
   const homeInfo = getTeamInfo(game.homeTeam);
+
+  // Live 1-second countdown clock that ticks smoothly in real-time
+  const [liveClock, setLiveClock] = useState<string>(game.clock || '12:00');
+
+  useEffect(() => {
+    setLiveClock(game.clock || '12:00');
+  }, [game.clock]);
+
+  useEffect(() => {
+    // Only tick when in a live phase and clock is not stopped!
+    const isStopped =
+      game.isClockRunning === false ||
+      game.isTimeout ||
+      Boolean(game.stoppageReason) ||
+      Boolean(game.stoppageDetail) ||
+      /timeout|end|half/i.test(game.clock || '');
+
+    if (
+      isStopped ||
+      (game.phase !== 'LIVE' &&
+        game.phase !== 'CLUTCH' &&
+        game.phase !== 'OVERTIME')
+    ) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setLiveClock((prev) => {
+        const secs = clockToSeconds(prev);
+        if (secs <= 0) return '0:00';
+        return secondsToClock(secs - 1);
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [
+    game.phase,
+    game.isClockRunning,
+    game.isTimeout,
+    game.stoppageReason,
+    game.stoppageDetail,
+    game.clock,
+  ]);
 
   const innerRef = useRef<HTMLDivElement | null>(null);
   const [cardHeight, setCardHeight] = useState<number | null>(null);
@@ -188,11 +235,46 @@ export const FloatingGameCard: React.FC<FloatingGameCardProps> = ({
           /timeout/i.test(game.lastPlays[0].description)) ||
         (game.lastPlayShort && /timeout/i.test(game.lastPlayShort))
     );
+
+    let stoppageReason = game.stoppageReason;
+    let stoppageDetail = game.stoppageDetail;
+
+    if (!stoppageReason && !stoppageDetail) {
+      if (isTimeout) {
+        stoppageReason = 'Timeout';
+        stoppageDetail = 'Timeout';
+      } else if (game.isClockRunning === false) {
+        const checkText = `${game.lastPlayShort || ''} ${game.lastPlays?.[0]?.description || ''}`;
+        if (/free\s*throw|shooting\s*foul/i.test(checkText)) {
+          stoppageReason = 'Free Throws';
+          stoppageDetail = 'Free Throws';
+        } else if (/throw-in|throwin|inbounds|out\s+of\s+bounds|turnover|violation|foul|substitution/i.test(checkText)) {
+          stoppageReason = 'Throw-in';
+          stoppageDetail = 'Throw-in';
+        } else if (/review|challenge|replay/i.test(checkText)) {
+          stoppageReason = 'Review';
+          stoppageDetail = 'Review';
+        } else if (/jump\s*ball|held\s*ball/i.test(checkText)) {
+          stoppageReason = 'Jump Ball';
+          stoppageDetail = 'Jump Ball';
+        }
+      }
+    }
+
+    const isStopped = Boolean(
+      stoppageReason ||
+      stoppageDetail ||
+      isTimeout ||
+      game.isClockRunning === false
+    );
+
     const clockLabel = formatLiveClockDisplay(
       game.quarter,
-      game.clock,
+      liveClock,
       game.phase,
-      isTimeout
+      isTimeout,
+      stoppageReason,
+      stoppageDetail
     );
     if (game.phase === 'CLUTCH') {
       return (
@@ -205,13 +287,13 @@ export const FloatingGameCard: React.FC<FloatingGameCardProps> = ({
           </div>
           <span
             className={
-              isTimeout
+              isStopped
                 ? 'cp-text-muted'
                 : 'cp-clutch-clock cp-anim-clutch-clock'
             }
             style={
-              isTimeout
-                ? { fontSize: 14, fontWeight: 500, color: '#FFCE7E' }
+              isStopped
+                ? { fontSize: 14, fontWeight: 600, color: '#FFCE7E' }
                 : undefined
             }
           >
@@ -245,7 +327,7 @@ export const FloatingGameCard: React.FC<FloatingGameCardProps> = ({
               OVERTIME
             </span>
           </div>
-          <span className={isTimeout ? 'cp-text-muted' : 'cp-live-clock-red'}>
+          <span className={isStopped ? 'cp-text-white-14-semi' : 'cp-live-clock-red'}>
             {clockLabel}
           </span>
         </div>
@@ -283,7 +365,7 @@ export const FloatingGameCard: React.FC<FloatingGameCardProps> = ({
           </div>
         </div>
         <span
-          className="cp-text-muted"
+          className={isStopped ? 'cp-text-white-14-semi' : 'cp-text-muted'}
           style={{ fontVariantNumeric: 'tabular-nums' }}
         >
           {clockLabel}

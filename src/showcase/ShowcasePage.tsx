@@ -747,7 +747,9 @@ export const ShowcasePage: React.FC<ShowcasePageProps> = ({ onBackToIndex, onOpe
 
   const simSnapshot = getSimSnapshot(simTime);
 
-  const applyPreset = (preset: 'normal' | 'run' | 'clutch' | 'final') => {
+  const applyPreset = (
+    preset: 'normal' | 'run' | 'clutch' | 'final' | 'freethrows' | 'throwin' | 'timeout'
+  ) => {
     if (preset === 'normal') {
       setHeroGame({
         ...FIGMA_GAMES_LIVE[0],
@@ -756,6 +758,10 @@ export const ShowcasePage: React.FC<ShowcasePageProps> = ({ onBackToIndex, onOpe
         clock: '4:12',
         awayScore: 78,
         homeScore: 67,
+        isClockRunning: true,
+        stoppageReason: null,
+        stoppageDetail: undefined,
+        isTimeout: false,
         possession: 'away',
         activeRunText: undefined,
         activeRunTeam: undefined,
@@ -773,6 +779,10 @@ export const ShowcasePage: React.FC<ShowcasePageProps> = ({ onBackToIndex, onOpe
         clock: '4:12',
         awayScore: 78,
         homeScore: 67,
+        isClockRunning: true,
+        stoppageReason: null,
+        stoppageDetail: undefined,
+        isTimeout: false,
         possession: 'away',
         activeRunText: 'PHI 8-0 run',
         activeRunTeam: 'PHI',
@@ -780,6 +790,105 @@ export const ShowcasePage: React.FC<ShowcasePageProps> = ({ onBackToIndex, onOpe
         momentumValue: -28,
         scoreHistory: FIGMA_SCORE_HISTORY_Q3,
         lastPlayShort: 'Maxey pull-up three',
+      });
+      setHeroAlert(null);
+    } else if (preset === 'freethrows') {
+      setHeroGame({
+        ...FIGMA_GAMES_LIVE[0],
+        phase: 'LIVE',
+        quarter: 3,
+        clock: '3:45',
+        awayScore: 81,
+        homeScore: 68,
+        isClockRunning: false,
+        stoppageReason: 'Free Throws',
+        stoppageDetail: 'Free Throw (1 of 2)',
+        isTimeout: false,
+        possession: 'home',
+        activeRunText: undefined,
+        activeRunTeam: undefined,
+        runPoints: 0,
+        momentumValue: -20,
+        scoreHistory: FIGMA_SCORE_HISTORY_Q3,
+        lastPlayShort: 'Brunson shooting foul (2 FTs)',
+        lastPlays: [
+          {
+            id: 'ft1',
+            clock: '3:45',
+            quarter: 3,
+            teamAbbr: 'NYK',
+            description: 'Brunson fouled by Maxey on driving layup (2 FTs)',
+            isScoringPlay: false,
+            pointsScored: 0,
+          },
+          ...FIGMA_GAMES_LIVE[0].lastPlays,
+        ],
+      });
+      setHeroAlert(null);
+    } else if (preset === 'throwin') {
+      setHeroGame({
+        ...FIGMA_GAMES_LIVE[0],
+        phase: 'LIVE',
+        quarter: 3,
+        clock: '3:20',
+        awayScore: 81,
+        homeScore: 69,
+        isClockRunning: false,
+        stoppageReason: 'Throw-in',
+        stoppageDetail: 'Throw-in',
+        isTimeout: false,
+        possession: 'away',
+        activeRunText: undefined,
+        activeRunTeam: undefined,
+        runPoints: 0,
+        momentumValue: -18,
+        scoreHistory: FIGMA_SCORE_HISTORY_Q3,
+        lastPlayShort: 'Deflected out of bounds by NYK',
+        lastPlays: [
+          {
+            id: 'th1',
+            clock: '3:20',
+            quarter: 3,
+            teamAbbr: 'NYK',
+            description: 'Brunson lost ball deflected out of bounds',
+            isScoringPlay: false,
+            pointsScored: 0,
+          },
+          ...FIGMA_GAMES_LIVE[0].lastPlays,
+        ],
+      });
+      setHeroAlert(null);
+    } else if (preset === 'timeout') {
+      setHeroGame({
+        ...FIGMA_GAMES_LIVE[0],
+        phase: 'LIVE',
+        quarter: 3,
+        clock: '2:55',
+        awayScore: 84,
+        homeScore: 69,
+        isTimeout: true,
+        isClockRunning: false,
+        stoppageReason: 'Timeout',
+        stoppageDetail: 'Timeout',
+        possession: 'home',
+        activeRunText: 'PHI 11-2 run',
+        activeRunTeam: 'PHI',
+        runPoints: 11,
+        momentumValue: -34,
+        scoreHistory: FIGMA_SCORE_HISTORY_Q3,
+        lastPlayShort: 'NYK Full Timeout',
+        lastPlays: [
+          {
+            id: 'to1',
+            clock: '2:55',
+            quarter: 3,
+            teamAbbr: 'NYK',
+            description: 'Knicks 60-second full timeout',
+            isScoringPlay: false,
+            pointsScored: 0,
+          },
+          ...FIGMA_GAMES_LIVE[0].lastPlays,
+        ],
       });
       setHeroAlert(null);
     } else if (preset === 'clutch') {
@@ -790,6 +899,10 @@ export const ShowcasePage: React.FC<ShowcasePageProps> = ({ onBackToIndex, onOpe
         clock: '1:48',
         awayScore: 101,
         homeScore: 99,
+        isClockRunning: true,
+        stoppageReason: null,
+        stoppageDetail: undefined,
+        isTimeout: false,
         possession: 'home',
         activeRunText: undefined,
         activeRunTeam: undefined,
@@ -808,6 +921,10 @@ export const ShowcasePage: React.FC<ShowcasePageProps> = ({ onBackToIndex, onOpe
         clock: 'FINAL',
         awayScore: 112,
         homeScore: 109,
+        isClockRunning: false,
+        stoppageReason: null,
+        stoppageDetail: undefined,
+        isTimeout: false,
         possession: null,
         activeRunText: undefined,
         activeRunTeam: undefined,
@@ -996,6 +1113,42 @@ export const ShowcasePage: React.FC<ShowcasePageProps> = ({ onBackToIndex, onOpe
                 }}
               >
                 Clutch
+              </button>
+              <button
+                className={`cp-text-selector-btn ${
+                  heroGame.stoppageReason === 'Free Throws' ? 'active' : ''
+                }`}
+                onClick={() => applyPreset('freethrows')}
+                style={{
+                  ...styles.btnGhost,
+                  ...(heroGame.stoppageReason === 'Free Throws' ? styles.btnGhostActive : {}),
+                }}
+              >
+                Free Throws
+              </button>
+              <button
+                className={`cp-text-selector-btn ${
+                  heroGame.stoppageReason === 'Throw-in' ? 'active' : ''
+                }`}
+                onClick={() => applyPreset('throwin')}
+                style={{
+                  ...styles.btnGhost,
+                  ...(heroGame.stoppageReason === 'Throw-in' ? styles.btnGhostActive : {}),
+                }}
+              >
+                Throw-in
+              </button>
+              <button
+                className={`cp-text-selector-btn ${
+                  heroGame.isTimeout ? 'active' : ''
+                }`}
+                onClick={() => applyPreset('timeout')}
+                style={{
+                  ...styles.btnGhost,
+                  ...(heroGame.isTimeout ? styles.btnGhostActive : {}),
+                }}
+              >
+                Timeout
               </button>
               <button
                 className={`cp-text-selector-btn ${

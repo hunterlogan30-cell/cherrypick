@@ -51,10 +51,18 @@ export function formatLiveClockDisplay(
   quarter?: number,
   clock?: string,
   phase?: string,
-  isTimeout?: boolean
+  isTimeout?: boolean,
+  stoppageReason?: string | null,
+  stoppageDetail?: string | null
 ): string {
-  if (isTimeout || /timeout/i.test(clock || '')) {
+  if (isTimeout) {
     return 'Timeout';
+  }
+  if (stoppageDetail) {
+    return stoppageDetail;
+  }
+  if (stoppageReason) {
+    return stoppageReason;
   }
   const q = quarter || 1;
   const isOt = phase === 'OVERTIME' || q > 4;
@@ -95,9 +103,14 @@ export function tickLiveGamesOneSecond(games: NbaGame[]): NbaGame[] {
     ) {
       return g;
     }
-    // When a timeout is active, hold the clock so it displays 'Timeout' and does not tick down!
-    // As soon as play is live, continuously count down second by second!
-    if (g.isTimeout || /timeout/i.test(g.clock || '')) {
+    // When game action is stopped (free throws, throw-in, timeout, review, end of period), DO NOT TICK!
+    if (
+      g.isClockRunning === false ||
+      g.isTimeout ||
+      Boolean(g.stoppageReason) ||
+      Boolean(g.stoppageDetail) ||
+      /timeout|end|half/i.test(g.clock || '')
+    ) {
       return g;
     }
     const currentSecs = clockToSeconds(g.clock);
@@ -772,15 +785,53 @@ export async function enrichGameWithSummary(game: NbaGame): Promise<NbaGame> {
         (game.isTimeout && !hasActiveBasketballPlayResumed)
     );
 
-    // Stoppage detection: clock must NOT tick when in timeout, during free throws, fouls, dead balls, or substitutions
-    const isStoppage =
-      isTimeout ||
-      /foul|free\s+throw|timeout|review|instant\s+replay|stoppage|injury|out\s+of\s+bounds|violation|jump\s+ball/i.test(
+    // Stoppage classification: identify exact state (Free Throws, Throw-in, Timeout, Review, Jump Ball)
+    let stoppageReason: NbaGame['stoppageReason'] = null;
+    let stoppageDetail: string | undefined = undefined;
+
+    if (isTimeout) {
+      stoppageReason = 'Timeout';
+      stoppageDetail = 'Timeout';
+    } else if (/review|challenge|replay/i.test(latestActionText)) {
+      stoppageReason = 'Review';
+      stoppageDetail = 'Review';
+    } else if (/jump\s+ball|held\s+ball/i.test(latestActionText)) {
+      stoppageReason = 'Jump Ball';
+      stoppageDetail = 'Jump Ball';
+    } else if (
+      /free\s+throw|shooting\s+foul/i.test(latestActionText) ||
+      /free\s+throw/i.test(String(latestActionPlay?.type?.text || ''))
+    ) {
+      stoppageReason = 'Free Throws';
+      const ftMatch = latestActionText.match(/\b([1-3]\s+of\s+[1-3])\b/i);
+      stoppageDetail = ftMatch ? `Free Throw (${ftMatch[1]})` : 'Free Throws';
+    } else if (
+      /out\s+of\s+bounds|turnover|bad\s+pass|traveling|violation|foul|substitution|enters\s+the\s+game/i.test(
         latestActionText
       ) ||
-      /enters the game|substitution/i.test(latestRawText);
+      /enters the game|substitution/i.test(latestRawText)
+    ) {
+      stoppageReason = 'Throw-in';
+      stoppageDetail = 'Throw-in';
+    }
 
+    const isStoppage = Boolean(stoppageReason || isTimeout);
     const isClockRunning = isLivePhase && !isStoppage;
+
+    // Synchronize scoreboard points with play calls so points and plays NEVER desync
+    let syncedAwayScore = game.awayScore;
+    let syncedHomeScore = game.homeScore;
+
+    if (rawPlays.length > 0 && game.phase !== 'FINAL') {
+      for (let i = rawPlays.length - 1; i >= 0; i--) {
+        const p = rawPlays[i];
+        if (typeof p?.awayScore === 'number' && typeof p?.homeScore === 'number') {
+          syncedAwayScore = p.awayScore;
+          syncedHomeScore = p.homeScore;
+          break;
+        }
+      }
+    }
 
     // If a timeout is active, callout should highlight the timeout play
     const timeoutPlay = lastPlays.find((lp) =>
@@ -798,9 +849,13 @@ export async function enrichGameWithSummary(game: NbaGame): Promise<NbaGame> {
 
     return {
       ...game,
+      awayScore: syncedAwayScore,
+      homeScore: syncedHomeScore,
       possession: livePossession,
       isTimeout,
       isClockRunning,
+      stoppageReason,
+      stoppageDetail,
       lastPlays: lastPlays.length > 0 ? lastPlays : game.lastPlays,
       lastPlayShort: preferredCalloutPlay?.description || game.lastPlayShort,
       activeRunText,
