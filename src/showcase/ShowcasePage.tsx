@@ -5,6 +5,7 @@ import { SmartAlertToast } from '../components/SmartAlertToast';
 import { FloatingWidgetContainer } from '../components/FloatingWidgetContainer';
 import { OnboardingFlow } from '../components/OnboardingFlow';
 import { PopupDashboard } from '../components/PopupDashboard';
+import { tickLiveGamesOneSecond } from '../services/espnNbaService';
 import { NBA_TEAMS, getTeamInfo, getTeamStars } from '../data/teams';
 import {
   FIGMA_GAMES_LIVE,
@@ -662,6 +663,17 @@ export const ShowcasePage: React.FC<ShowcasePageProps> = ({ onBackToIndex, onOpe
   const [heroGame, setHeroGame] = useState<NbaGame>(FIGMA_GAMES_LIVE[0]);
   const [heroExpanded, setHeroExpanded] = useState<boolean>(false);
   const [heroAlert, setHeroAlert] = useState<SmartAlert | null>(null);
+
+  // Live 1-second countdown clock for the Hero stage game
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setHeroGame((prev) => {
+        const nextList = tickLiveGamesOneSecond([prev]);
+        return nextList[0];
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // --- Team Gradient Lab State ---
   const [selectedAwayTeam, setSelectedAwayTeam] = useState<string>('PHI');

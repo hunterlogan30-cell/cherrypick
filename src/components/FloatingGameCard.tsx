@@ -24,49 +24,6 @@ export const FloatingGameCard: React.FC<FloatingGameCardProps> = ({
   const awayInfo = getTeamInfo(game.awayTeam);
   const homeInfo = getTeamInfo(game.homeTeam);
 
-  // Live 1-second countdown clock that ticks smoothly in real-time
-  const [liveClock, setLiveClock] = useState<string>(game.clock || '12:00');
-
-  useEffect(() => {
-    setLiveClock(game.clock || '12:00');
-  }, [game.clock]);
-
-  useEffect(() => {
-    // Only tick when in a live phase and clock is not stopped!
-    const isStopped =
-      game.isClockRunning === false ||
-      game.isTimeout ||
-      Boolean(game.stoppageReason) ||
-      Boolean(game.stoppageDetail) ||
-      /timeout|end|half/i.test(game.clock || '');
-
-    if (
-      isStopped ||
-      (game.phase !== 'LIVE' &&
-        game.phase !== 'CLUTCH' &&
-        game.phase !== 'OVERTIME')
-    ) {
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setLiveClock((prev) => {
-        const secs = clockToSeconds(prev);
-        if (secs <= 0) return '0:00';
-        return secondsToClock(secs - 1);
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [
-    game.phase,
-    game.isClockRunning,
-    game.isTimeout,
-    game.stoppageReason,
-    game.stoppageDetail,
-    game.clock,
-  ]);
-
   const innerRef = useRef<HTMLDivElement | null>(null);
   const [cardHeight, setCardHeight] = useState<number | null>(null);
 
@@ -270,7 +227,7 @@ export const FloatingGameCard: React.FC<FloatingGameCardProps> = ({
 
     const clockLabel = formatLiveClockDisplay(
       game.quarter,
-      liveClock,
+      game.clock,
       game.phase,
       isTimeout,
       stoppageReason,

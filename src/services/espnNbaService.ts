@@ -174,8 +174,8 @@ function parseEspnEvent(
 
   const awayTeam = normalizeAbbr(awayComp?.team?.abbreviation || 'PHI');
   const homeTeam = normalizeAbbr(homeComp?.team?.abbreviation || 'NYK');
-  const awayScore = parseInt(awayComp?.score || '0', 10);
-  const homeScore = parseInt(homeComp?.score || '0', 10);
+  let awayScore = parseInt(awayComp?.score || '0', 10);
+  let homeScore = parseInt(homeComp?.score || '0', 10);
 
   const statusObj = ev.status || comp?.status;
   const state: string = statusObj?.type?.state || 'pre'; // 'pre' | 'in' | 'post'
@@ -259,7 +259,7 @@ function parseEspnEvent(
     situation?.lastPlay?.team?.id && compTeamMap[String(situation.lastPlay.team.id)]
       ? compTeamMap[String(situation.lastPlay.team.id)]
       : awayTeam;
-  const lastPlayText: string | undefined = rawLastPlay || (
+  let lastPlayText: string | undefined = rawLastPlay || (
     phase === 'LIVE' || phase === 'CLUTCH'
       ? `${awayTeam} vs ${homeTeam} live action`
       : undefined
@@ -358,40 +358,19 @@ function parseEspnEvent(
     }
   }
 
-  // If score increased but lastPlay text didn't capture the new basket yet, inject scoring play immediately!
-  if (prevGame) {
-    const dA = awayScore - prevGame.awayScore;
-    const dH = homeScore - prevGame.homeScore;
-    if (dA > 0 && !lastPlays[0]?.isScoringPlay) {
-      lastPlays = [
-        {
-          id: `live-score-away-${Date.now()}`,
-          clock: displayClock,
-          quarter,
-          teamAbbr: awayTeam,
-          description: `${awayTeam} bucket (+${dA})`,
-          isScoringPlay: true,
-          pointsScored: dA,
-          awayScore,
-          homeScore,
-        },
-        ...lastPlays,
-      ].slice(0, 4);
-    } else if (dH > 0 && !lastPlays[0]?.isScoringPlay) {
-      lastPlays = [
-        {
-          id: `live-score-home-${Date.now()}`,
-          clock: displayClock,
-          quarter,
-          teamAbbr: homeTeam,
-          description: `${homeTeam} bucket (+${dH})`,
-          isScoringPlay: true,
-          pointsScored: dH,
-          awayScore,
-          homeScore,
-        },
-        ...lastPlays,
-      ].slice(0, 4);
+  // If scoreboard score is ahead of prevGame but play-by-play description has not arrived yet,
+  // hold prevGame's aligned score and plays so points and plays NEVER desync!
+  if (
+    prevGame &&
+    (prevGame.phase === 'LIVE' ||
+      prevGame.phase === 'CLUTCH' ||
+      prevGame.phase === 'OVERTIME')
+  ) {
+    if (awayScore > prevGame.awayScore || homeScore > prevGame.homeScore) {
+      awayScore = prevGame.awayScore;
+      homeScore = prevGame.homeScore;
+      lastPlays = prevGame.lastPlays;
+      lastPlayText = prevGame.lastPlayShort || lastPlayText;
     }
   }
 
@@ -630,21 +609,6 @@ export async function enrichGameWithSummary(game: NbaGame): Promise<NbaGame> {
       if (lastPlays.length >= 4) break;
     }
 
-    // Merge any newer play from game.lastPlays that hasn't arrived in summary.plays yet
-    if (game.lastPlays && game.lastPlays.length > 0) {
-      const pendingPlays = game.lastPlays.filter(
-        (lp) =>
-          !lastPlays.some(
-            (p) =>
-              p.id === lp.id ||
-              (p.clock === lp.clock && p.description === lp.description)
-          )
-      );
-      if (pendingPlays.length > 0) {
-        lastPlays = [...pendingPlays, ...lastPlays].slice(0, 4);
-      }
-    }
-
     const scoringPlays = trueScoringPlays;
 
     let scoreHistory: ScorePoint[] = game.scoreHistory;
@@ -821,6 +785,8 @@ export async function enrichGameWithSummary(game: NbaGame): Promise<NbaGame> {
     // Synchronize scoreboard points with play calls so points and plays NEVER desync
     let syncedAwayScore = game.awayScore;
     let syncedHomeScore = game.homeScore;
+    let syncedClock = game.clock;
+    let syncedQuarter = game.quarter;
 
     if (rawPlays.length > 0 && game.phase !== 'FINAL') {
       for (let i = rawPlays.length - 1; i >= 0; i--) {
@@ -829,6 +795,18 @@ export async function enrichGameWithSummary(game: NbaGame): Promise<NbaGame> {
           syncedAwayScore = p.awayScore;
           syncedHomeScore = p.homeScore;
           break;
+        }
+      }
+      const topPlay = lastPlays[0];
+      if (topPlay) {
+        if (isStoppage && topPlay.clock) {
+          syncedClock = topPlay.clock;
+        } else {
+          const headerClock = summary?.header?.competitions?.[0]?.status?.displayClock;
+          syncedClock = headerClock || topPlay.clock || syncedClock;
+        }
+        if (topPlay.quarter) {
+          syncedQuarter = topPlay.quarter;
         }
       }
     }
@@ -851,6 +829,8 @@ export async function enrichGameWithSummary(game: NbaGame): Promise<NbaGame> {
       ...game,
       awayScore: syncedAwayScore,
       homeScore: syncedHomeScore,
+      clock: syncedClock,
+      quarter: syncedQuarter,
       possession: livePossession,
       isTimeout,
       isClockRunning,
