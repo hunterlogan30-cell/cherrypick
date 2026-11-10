@@ -29,6 +29,10 @@ const ContentOverlayApp: React.FC = () => {
     });
     const clockTimer = setInterval(() => {
       if (document.visibilityState !== 'visible') return;
+      if (typeof chrome !== 'undefined' && !chrome.runtime?.id) {
+        clearInterval(clockTimer);
+        return;
+      }
       setSnapshot((prev) => {
         if (!prev) return prev;
         const nextGames = tickLiveGamesOneSecond(prev.games);
@@ -40,7 +44,7 @@ const ContentOverlayApp: React.FC = () => {
         );
         if (tickAlerts.length > 0) {
           const latest = tickAlerts[tickAlerts.length - 1];
-          saveState({ activeAlert: latest });
+          saveState({ activeAlert: latest }).catch(() => {});
           return { ...prev, games: nextGames, activeAlert: latest };
         }
         return { ...prev, games: nextGames };
@@ -52,11 +56,14 @@ const ContentOverlayApp: React.FC = () => {
       if (
         document.visibilityState === 'visible' &&
         typeof chrome !== 'undefined' &&
-        chrome.runtime &&
-        chrome.runtime.sendMessage
+        chrome.runtime?.id &&
+        chrome.runtime?.sendMessage
       ) {
         try {
-          chrome.runtime.sendMessage({ type: 'POLL_NBA_NOW' });
+          const p = chrome.runtime.sendMessage({ type: 'POLL_NBA_NOW' });
+          if (p && typeof p.catch === 'function') {
+            p.catch(() => {});
+          }
         } catch {
           // Ignore if extension context was invalidated on reload
         }
@@ -92,7 +99,7 @@ const ContentOverlayApp: React.FC = () => {
               overlayVisible: true,
             },
           };
-          saveState({ settings: next.settings });
+          saveState({ settings: next.settings }).catch(() => {});
           return next;
         });
         sendResponse({ ok: true, version: 5 });
@@ -102,10 +109,12 @@ const ContentOverlayApp: React.FC = () => {
 
     if (
       typeof chrome !== 'undefined' &&
-      chrome.runtime &&
-      chrome.runtime.onMessage
+      chrome.runtime?.id &&
+      chrome.runtime?.onMessage
     ) {
-      chrome.runtime.onMessage.addListener(messageListener);
+      try {
+        chrome.runtime.onMessage.addListener(messageListener);
+      } catch {}
     }
 
     return () => {
@@ -116,10 +125,12 @@ const ContentOverlayApp: React.FC = () => {
       document.removeEventListener('visibilitychange', handleVisibility);
       if (
         typeof chrome !== 'undefined' &&
-        chrome.runtime &&
-        chrome.runtime.onMessage
+        chrome.runtime?.id &&
+        chrome.runtime?.onMessage
       ) {
-        chrome.runtime.onMessage.removeListener(messageListener);
+        try {
+          chrome.runtime.onMessage.removeListener(messageListener);
+        } catch {}
       }
     };
   }, []);
@@ -128,7 +139,7 @@ const ContentOverlayApp: React.FC = () => {
   useEffect(() => {
     if (!snapshot?.activeAlert) return;
     const timer = setTimeout(() => {
-      saveState({ activeAlert: null });
+      saveState({ activeAlert: null }).catch(() => {});
     }, 6000);
     return () => clearTimeout(timer);
   }, [snapshot?.activeAlert?.id]);
@@ -154,11 +165,11 @@ const ContentOverlayApp: React.FC = () => {
         ...snapshot.settings,
         overlayExpanded: !snapshot.settings.overlayExpanded,
       },
-    });
+    }).catch(() => {});
   };
 
   const handleDismissAlert = () => {
-    saveState({ activeAlert: null });
+    saveState({ activeAlert: null }).catch(() => {});
   };
 
   const handleClose = () => {
@@ -168,7 +179,7 @@ const ContentOverlayApp: React.FC = () => {
         overlayVisible: false,
       },
       activeAlert: null,
-    });
+    }).catch(() => {});
   };
 
   if (!pinnedGame) {

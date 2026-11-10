@@ -31,16 +31,28 @@ export function getInitialSnapshot(): AppStateSnapshot {
 export async function loadState(): Promise<AppStateSnapshot> {
   if (isChromeExtension) {
     return new Promise((resolve) => {
-      chrome.storage.local.get([STORAGE_KEY], (res) => {
-        if (res && res[STORAGE_KEY]) {
-          resolve({
-            ...getInitialSnapshot(),
-            ...res[STORAGE_KEY],
-          });
-        } else {
+      try {
+        if (!chrome.runtime?.id) {
           resolve(getInitialSnapshot());
+          return;
         }
-      });
+        chrome.storage.local.get([STORAGE_KEY], (res) => {
+          if (chrome.runtime?.lastError) {
+            resolve(getInitialSnapshot());
+            return;
+          }
+          if (res && res[STORAGE_KEY]) {
+            resolve({
+              ...getInitialSnapshot(),
+              ...res[STORAGE_KEY],
+            });
+          } else {
+            resolve(getInitialSnapshot());
+          }
+        });
+      } catch {
+        resolve(getInitialSnapshot());
+      }
     });
   } else {
     try {
@@ -76,14 +88,28 @@ export function saveState(
 
     if (isChromeExtension) {
       await new Promise<void>((resolve) => {
-        chrome.storage.local.set(
-          {
-            [STORAGE_KEY]: next,
-            cherrypick_state_v2: next,
-            cherrypick_state_v1: next,
-          },
-          () => resolve()
-        );
+        try {
+          if (!chrome.runtime?.id) {
+            resolve();
+            return;
+          }
+          chrome.storage.local.set(
+            {
+              [STORAGE_KEY]: next,
+              cherrypick_state_v2: next,
+              cherrypick_state_v1: next,
+            },
+            () => {
+              // Access lastError to prevent unchecked runtime.lastError warnings in Chrome
+              if (chrome.runtime?.lastError) {
+                // context invalidated or storage full
+              }
+              resolve();
+            }
+          );
+        } catch {
+          resolve();
+        }
       });
     } else {
       try {
@@ -108,12 +134,27 @@ export function subscribeToState(
       changes: { [key: string]: chrome.storage.StorageChange },
       areaName: string
     ) => {
-      if (areaName === 'local' && changes[STORAGE_KEY]?.newValue) {
-        callback(changes[STORAGE_KEY].newValue);
+      try {
+        if (!chrome.runtime?.id) return;
+        if (areaName === 'local' && changes[STORAGE_KEY]?.newValue) {
+          callback(changes[STORAGE_KEY].newValue);
+        }
+      } catch {
+        // context invalidated
       }
     };
-    chrome.storage.onChanged.addListener(listener);
-    return () => chrome.storage.onChanged.removeListener(listener);
+    try {
+      chrome.storage.onChanged.addListener(listener);
+      return () => {
+        try {
+          if (chrome.runtime?.id) {
+            chrome.storage.onChanged.removeListener(listener);
+          }
+        } catch {}
+      };
+    } catch {
+      return () => {};
+    }
   } else {
     const customListener = (e: Event) => {
       const ce = e as CustomEvent<AppStateSnapshot>;

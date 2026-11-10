@@ -1212,10 +1212,12 @@ export function ensureInterFontsLoaded(): Promise<boolean> {
             display: 'swap',
           });
           const loaded = await face.load();
-          document.fonts.add(loaded);
+          try {
+            document.fonts.add(loaded);
+          } catch {}
         } catch {
           // If in-memory FontFace fails, try chrome.runtime.getURL if available
-          if (typeof chrome !== 'undefined' && chrome.runtime?.getURL) {
+          if (typeof chrome !== 'undefined' && chrome.runtime?.id && chrome.runtime?.getURL) {
             try {
               const extFace = new FontFace('Inter', `url(${chrome.runtime.getURL(`fonts/${def.file}`)})`, {
                 weight: def.weight,
@@ -1223,7 +1225,9 @@ export function ensureInterFontsLoaded(): Promise<boolean> {
                 display: 'swap',
               });
               const loadedExt = await extFace.load();
-              document.fonts.add(loadedExt);
+              try {
+                document.fonts.add(loadedExt);
+              } catch {}
             } catch {}
           }
         }
