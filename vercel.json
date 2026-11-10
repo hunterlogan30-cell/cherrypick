@@ -1,9 +1,10 @@
 {
+  "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/((?!assets/|icons/|fonts/|.*\\..*).*)",
       "destination": "/index.html"
     }
   ]
