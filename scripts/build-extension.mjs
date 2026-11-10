@@ -109,6 +109,34 @@ async function buildExtensionScripts() {
   });
 
   console.log('✓ Built dist/contentScript.js and dist/background.js');
+  // Add static vercel.json and package.json to dist so if Vercel ever deploys gh-pages directly, it succeeds instantly
+  writeFileSync(
+    resolve(rootDir, 'dist/vercel.json'),
+    JSON.stringify(
+      {
+        framework: null,
+        buildCommand: "echo 'Static bundle ready'",
+        outputDirectory: ".",
+      },
+      null,
+      2
+    )
+  );
+
+  writeFileSync(
+    resolve(rootDir, 'dist/package.json'),
+    JSON.stringify(
+      {
+        name: "cherrypick-static",
+        private: true,
+        scripts: {
+          build: "echo 'Static bundle ready'",
+        },
+      },
+      null,
+      2
+    )
+  );
 }
 
 buildExtensionScripts().catch((err) => {
