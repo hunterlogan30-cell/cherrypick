@@ -11,6 +11,7 @@ import { FloatingWidgetContainer } from '../components/FloatingWidgetContainer';
 import { injectStylesInto, ensureInterFontsLoaded } from '../styles/cherrypickStyles';
 import {
   detectSmartAlerts,
+  mergeGamesMonotonically,
   tickLiveGamesOneSecond,
 } from '../services/espnNbaService';
 
@@ -25,7 +26,13 @@ const ContentOverlayApp: React.FC = () => {
     });
     const unsub = subscribeToState((next) => {
       if (!mounted) return;
-      setSnapshot(next);
+      setSnapshot((prev) => {
+        if (!prev) return next;
+        return {
+          ...next,
+          games: mergeGamesMonotonically(prev.games, next.games),
+        };
+      });
     });
     const clockTimer = setInterval(() => {
       if (document.visibilityState !== 'visible') return;

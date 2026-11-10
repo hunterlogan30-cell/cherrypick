@@ -278,7 +278,9 @@ export const PopupDashboard: React.FC<PopupDashboardProps> = ({
                         /timeout/i.test(heroGame.clock || '') ||
                         (heroGame.lastPlayShort &&
                           /timeout/i.test(heroGame.lastPlayShort))
-                    )
+                    ),
+                    heroGame.stoppageReason,
+                    heroGame.stoppageDetail
                   )}
                 </span>
               </div>
@@ -313,7 +315,9 @@ export const PopupDashboard: React.FC<PopupDashboardProps> = ({
                             /timeout/i.test(heroGame.clock || '') ||
                             (heroGame.lastPlayShort &&
                               /timeout/i.test(heroGame.lastPlayShort))
-                        )
+                        ),
+                        heroGame.stoppageReason,
+                        heroGame.stoppageDetail
                       )}
                     </span>
                   </div>

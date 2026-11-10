@@ -3,6 +3,7 @@ import {
   DEFAULT_USER_SETTINGS,
   FIGMA_GAMES_LIVE,
 } from '../data/mockFigmaData';
+import { mergeGamesMonotonically } from './espnNbaService';
 
 export interface AppStateSnapshot {
   settings: UserSettings;
@@ -77,9 +78,14 @@ export function saveState(
 ): Promise<AppStateSnapshot> {
   saveStateQueue = saveStateQueue.then(async () => {
     const current = await loadState();
+    let nextGames = partial.games || current.games;
+    if (partial.games && current.games && current.games.length > 0) {
+      nextGames = mergeGamesMonotonically(current.games, partial.games);
+    }
     const next: AppStateSnapshot = {
       ...current,
       ...partial,
+      games: nextGames,
       settings: partial.settings
         ? { ...current.settings, ...partial.settings }
         : current.settings,

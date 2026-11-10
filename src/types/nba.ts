@@ -60,6 +60,7 @@ export interface NbaGame {
   isClockRunning?: boolean; // True when game action is actively live; false on whistles, fouls, free throws, stoppages
   stoppageReason?: StoppageReason; // Reason game clock is stopped: 'Free Throws', 'Throw-in', 'Timeout', 'Review', 'Jump Ball'
   stoppageDetail?: string; // Specific stoppage label to display in the top-right timing slot (e.g. "Free Throw (1 of 2)" or "Throw-in")
+  stoppageTicks?: number; // In-memory ticks elapsed since stoppage began
   startTimeText?: string; // e.g. '5:00 PM EST'
   dayLabel?: 'TODAY' | 'TOMORROW';
   possession?: 'away' | 'home' | null;

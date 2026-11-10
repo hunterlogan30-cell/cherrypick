@@ -55,21 +55,27 @@ export function formatLiveClockDisplay(
   stoppageReason?: string | null,
   stoppageDetail?: string | null
 ): string {
-  if (isTimeout) {
-    return 'Timeout';
-  }
-  if (stoppageDetail) {
-    return stoppageDetail;
-  }
-  if (stoppageReason) {
-    return stoppageReason;
-  }
   const q = quarter || 1;
   const isOt = phase === 'OVERTIME' || q > 4;
+  const isClutch = phase === 'CLUTCH';
+  const periodPrefix = isOt ? 'OT' : isClutch ? '' : `Q${q}`;
+
   if (!clock || clockToSeconds(clock) <= 0 || /end|half/i.test(clock)) {
+    if (/half/i.test(clock || '')) return 'Halftime';
     return isOt ? 'End of OT' : `End of Q${q}`;
   }
-  return isOt ? `OT • ${clock}` : `Q${q} • ${clock}`;
+
+  const stoppage = isTimeout
+    ? 'Timeout'
+    : stoppageDetail || stoppageReason;
+
+  if (stoppage) {
+    return periodPrefix
+      ? `${periodPrefix} • ${clock} • ${stoppage}`
+      : `${clock} • ${stoppage}`;
+  }
+
+  return periodPrefix ? `${periodPrefix} • ${clock}` : clock;
 }
 
 function parseClockMinutes(clock: string): number {
@@ -103,18 +109,37 @@ export function tickLiveGamesOneSecond(games: NbaGame[]): NbaGame[] {
     ) {
       return g;
     }
+
     // When game action is stopped (free throws, throw-in, timeout, review, end of period), DO NOT TICK!
-    if (
+    const isStopped =
       g.isClockRunning === false ||
       g.isTimeout ||
       Boolean(g.stoppageReason) ||
       Boolean(g.stoppageDetail) ||
-      /timeout|end|half/i.test(g.clock || '')
-    ) {
+      /timeout|end|half/i.test(g.clock || '');
+
+    if (isStopped) {
+      // In basketball, an inbounds throw-in lasts at most 8 seconds.
+      // If throw-in stoppage has elapsed for 8 ticks without an API update,
+      // the ball has been inbounded: clear stoppage and resume live clock ticking!
+      if (g.stoppageReason === 'Throw-in') {
+        const ticks = (g.stoppageTicks || 0) + 1;
+        if (ticks >= 8) {
+          changed = true;
+          return {
+            ...g,
+            stoppageReason: null,
+            stoppageDetail: undefined,
+            isClockRunning: true,
+            stoppageTicks: 0,
+          };
+        }
+        return { ...g, stoppageTicks: ticks };
+      }
       return g;
     }
+
     const currentSecs = clockToSeconds(g.clock);
-    // If already at 0:00 (between quarters), hold at End of Quarter until the new quarter begins
     if (currentSecs <= 0) {
       return g;
     }
@@ -142,9 +167,107 @@ export function tickLiveGamesOneSecond(games: NbaGame[]): NbaGame[] {
       clock: nextClock,
       phase: nextPhase,
       clutchNote: nextClutchNote,
+      stoppageTicks: 0,
     };
   });
   return changed ? next : games;
+}
+
+export function mergeGamesMonotonically(
+  prevGames: NbaGame[] | undefined,
+  incomingGames: NbaGame[]
+): NbaGame[] {
+  if (!prevGames || prevGames.length === 0) {
+    return incomingGames;
+  }
+
+  const prevMap = new Map<string, NbaGame>();
+  for (const pg of prevGames) {
+    prevMap.set(pg.id, pg);
+  }
+
+  return incomingGames.map((incoming) => {
+    const prev = prevMap.get(incoming.id);
+    if (!prev) return incoming;
+
+    const isIncomingLive =
+      incoming.phase === 'LIVE' ||
+      incoming.phase === 'CLUTCH' ||
+      incoming.phase === 'OVERTIME';
+    const isPrevLive =
+      prev.phase === 'LIVE' ||
+      prev.phase === 'CLUTCH' ||
+      prev.phase === 'OVERTIME';
+
+    if (!isIncomingLive || !isPrevLive) {
+      return incoming;
+    }
+
+    const prevQ = prev.quarter || 1;
+    const incQ = incoming.quarter || 1;
+
+    // 1. If quarter advanced, accept the new quarter and its clock
+    if (incQ > prevQ) {
+      return incoming;
+    }
+
+    // 2. If API returned a stale older quarter, hold current quarter
+    if (incQ < prevQ) {
+      return {
+        ...incoming,
+        quarter: prevQ,
+        clock: prev.clock,
+        phase: prev.phase,
+      };
+    }
+
+    // 3. Same quarter: CLOCK MUST BE STRICTLY MONOTONICALLY NON-INCREASING!
+    // A basketball clock counts down. It can NEVER jump backwards to a higher time remaining!
+    const prevSecs = clockToSeconds(prev.clock);
+    const incSecs = clockToSeconds(incoming.clock);
+    let effectiveClock = incoming.clock;
+    if (incSecs > prevSecs && prevSecs > 0) {
+      // Incoming API packet is cached/delayed: preserve our lower local ticked clock!
+      effectiveClock = prev.clock;
+    }
+
+    // 4. SCORE AND PLAY LOCKSTEP:
+    // If incoming points increased over prev, but incoming has no confirmed scoring play at top,
+    // delay the score bump until the play call arrives so points and plays NEVER desync!
+    let effectiveAwayScore = incoming.awayScore;
+    let effectiveHomeScore = incoming.homeScore;
+    let effectiveLastPlays = incoming.lastPlays;
+    let effectiveLastPlayShort = incoming.lastPlayShort;
+
+    const scoreIncreased =
+      incoming.awayScore > prev.awayScore || incoming.homeScore > prev.homeScore;
+
+    if (scoreIncreased) {
+      const topPlay = incoming.lastPlays?.[0];
+      const hasMatchingScoringPlay =
+        topPlay &&
+        (topPlay.isScoringPlay ||
+          /makes|3-pointer|three|dunk|layup|jumper|free throw/i.test(
+            topPlay.description || ''
+          ));
+
+      if (!hasMatchingScoringPlay && prev.lastPlays && prev.lastPlays.length > 0) {
+        effectiveAwayScore = prev.awayScore;
+        effectiveHomeScore = prev.homeScore;
+        effectiveLastPlays = prev.lastPlays;
+        effectiveLastPlayShort = prev.lastPlayShort;
+      }
+    }
+
+    return {
+      ...incoming,
+      clock: effectiveClock,
+      awayScore: effectiveAwayScore,
+      homeScore: effectiveHomeScore,
+      lastPlays: effectiveLastPlays,
+      lastPlayShort: effectiveLastPlayShort,
+    };
+  });
 }
 
 function formatYyyyMmDdInEst(date: Date): string {
@@ -186,9 +309,26 @@ function parseEspnEvent(
     statusName === 'STATUS_END_PERIOD' ||
     statusName === 'STATUS_HALFTIME' ||
     /end of|halftime/i.test(shortDetail);
-  const displayClock: string = isBetweenQuarters
+  let displayClock: string = isBetweenQuarters
     ? '0:00'
     : statusObj?.displayClock || '0:00';
+
+  // Apply monotonic clock rule if prevGame exists in the same quarter:
+  // A basketball game clock only counts down; it must NEVER jump backwards to a higher time!
+  if (
+    prevGame &&
+    (prevGame.phase === 'LIVE' ||
+      prevGame.phase === 'CLUTCH' ||
+      prevGame.phase === 'OVERTIME') &&
+    quarter === prevGame.quarter &&
+    !isBetweenQuarters
+  ) {
+    const prevSecs = clockToSeconds(prevGame.clock);
+    const incSecs = clockToSeconds(displayClock);
+    if (incSecs > prevSecs && prevSecs > 0) {
+      displayClock = prevGame.clock;
+    }
+  }
 
   let phase: NbaGame['phase'] = 'SCHEDULED';
   if (state === 'post') {
@@ -763,12 +903,34 @@ export async function enrichGameWithSummary(game: NbaGame): Promise<NbaGame> {
       stoppageReason = 'Jump Ball';
       stoppageDetail = 'Jump Ball';
     } else if (
-      /free\s+throw|shooting\s+foul/i.test(latestActionText) ||
+      /free\s+throw|shooting\s+foul|technical\s+foul|flagrant\s+foul/i.test(
+        latestActionText
+      ) ||
       /free\s+throw/i.test(String(latestActionPlay?.type?.text || ''))
     ) {
-      stoppageReason = 'Free Throws';
-      const ftMatch = latestActionText.match(/\b([1-3]\s+of\s+[1-3])\b/i);
-      stoppageDetail = ftMatch ? `Free Throw (${ftMatch[1]})` : 'Free Throws';
+      const ftMatch = latestActionText.match(/\b([1-3])\s+of\s+([1-3])\b/i);
+      if (ftMatch && parseInt(ftMatch[1], 10) < parseInt(ftMatch[2], 10)) {
+        stoppageReason = 'Free Throws';
+        stoppageDetail = `Free Throw (${ftMatch[1]} of ${ftMatch[2]})`;
+      } else if (
+        /shooting\s+foul|technical\s+foul|flagrant\s+foul/i.test(
+          latestActionText
+        )
+      ) {
+        stoppageReason = 'Free Throws';
+        stoppageDetail = 'Free Throws';
+      } else if (/free\s+throw/i.test(latestActionText)) {
+        if (/makes/i.test(latestActionText)) {
+          stoppageReason = 'Throw-in';
+          stoppageDetail = 'Throw-in';
+        } else {
+          stoppageReason = null;
+          stoppageDetail = undefined;
+        }
+      } else {
+        stoppageReason = 'Free Throws';
+        stoppageDetail = 'Free Throws';
+      }
     } else if (
       /out\s+of\s+bounds|turnover|bad\s+pass|traveling|violation|foul|substitution|enters\s+the\s+game/i.test(
         latestActionText
@@ -777,6 +939,16 @@ export async function enrichGameWithSummary(game: NbaGame): Promise<NbaGame> {
     ) {
       stoppageReason = 'Throw-in';
       stoppageDetail = 'Throw-in';
+    }
+
+    // If an in-play live basketball play occurred (shot, rebound, steal), stoppage is cleared
+    const isInPlayLiveAction =
+      /makes\s+(?:2|3|two|three|jump|dunk|layup|tip|hook|pullup|floating|bank)|misses\s+(?:2|3|two|three|jump|dunk|layup|tip|hook|pullup|floating|bank|free)|rebound|steal|blocks/i.test(
+        latestActionText
+      );
+    if (isInPlayLiveAction && stoppageReason === 'Throw-in') {
+      stoppageReason = null;
+      stoppageDetail = undefined;
     }
 
     const isStoppage = Boolean(stoppageReason || isTimeout);
@@ -798,16 +970,30 @@ export async function enrichGameWithSummary(game: NbaGame): Promise<NbaGame> {
         }
       }
       const topPlay = lastPlays[0];
+      let candidateClock = syncedClock;
       if (topPlay) {
         if (isStoppage && topPlay.clock) {
-          syncedClock = topPlay.clock;
+          candidateClock = topPlay.clock;
         } else {
           const headerClock = summary?.header?.competitions?.[0]?.status?.displayClock;
-          syncedClock = headerClock || topPlay.clock || syncedClock;
+          candidateClock = headerClock || topPlay.clock || syncedClock;
         }
         if (topPlay.quarter) {
           syncedQuarter = topPlay.quarter;
         }
+      }
+
+      // Enforce monotonic clock rule: never jump backwards within the same quarter!
+      if (syncedQuarter === game.quarter && game.clock) {
+        const currentSecs = clockToSeconds(game.clock);
+        const candSecs = clockToSeconds(candidateClock);
+        if (candSecs > currentSecs && currentSecs > 0) {
+          syncedClock = game.clock;
+        } else {
+          syncedClock = candidateClock;
+        }
+      } else {
+        syncedClock = candidateClock;
       }
     }
 

@@ -11,6 +11,7 @@ import {
   detectSmartAlerts,
   enrichGameWithSummary,
   fetchLiveNbaGames,
+  mergeGamesMonotonically,
   tickLiveGamesOneSecond,
 } from '../services/espnNbaService';
 import { OnboardingFlow } from '../components/OnboardingFlow';
@@ -49,7 +50,12 @@ export const PopupApp: React.FC<PopupAppProps> = ({
     });
 
     const unsub = subscribeToState((next) => {
-      if (mounted) setSnapshot(next);
+      if (mounted) {
+        setSnapshot((prev) => ({
+          ...next,
+          games: mergeGamesMonotonically(prev.games, next.games),
+        }));
+      }
     });
     return () => {
       mounted = false;
@@ -68,10 +74,11 @@ export const PopupApp: React.FC<PopupAppProps> = ({
         chrome.runtime
           .sendMessage({ type: 'POLL_NBA_NOW', force: true })
           .catch(() => {});
+        return;
       }
 
       const currentState = await loadState();
-      const { games, isFallback } = await fetchLiveNbaGames();
+      const { games, isFallback } = await fetchLiveNbaGames(currentState.games);
       if (cancelled) return;
       const fav = currentState.settings.favoriteTeam || 'PHI';
 
